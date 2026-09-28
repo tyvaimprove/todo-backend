@@ -1,0 +1,28 @@
+# Виртуальное окружение (Virtual Environment)
+.venv/
+venv/
+ENV/
+env/
+
+# Кэш Python и байт-код
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+
+# Локальные базы данных (если будете использовать SQLite для To-Do)
+*.sqlite3
+*.db
+
+# Файлы окружения с секретами (пароли, ключи API)
+.env
+.env.[a-zA-Z]*
+!.env.example
+
+# Настройки среды разработки (VS Code, PyCharm)
+.vscode/
+.idea/
+
+# Логи системы
+*.log
