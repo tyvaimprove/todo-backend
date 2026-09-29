@@ -13,11 +13,9 @@ env:
 jobs:
   # ==================== СТАДИЯ BUILD ====================
   build-job:
-
     runs-on: [self-hosted, testserver]
-
     if: github.ref_name == 'stage'
-    
+
     steps:
       # Скачиваем свежий код репозитория на сервер
       - name: Checkout repository code
@@ -34,75 +32,74 @@ jobs:
   deploy-job:
     runs-on: [self-hosted, testserver]
     needs: build-job
-    # Условие: деплой пойдет, если сборка успешна ИЛИ если мы пушим в main 
+    # Условие: деплой пойдет, если сборка успешна ИЛИ если мы пушим в main
     # (так как для main шаг сборки выше пропустится по условию)
     if: always() && (needs.build-job.result == 'success' || github.ref_name == 'main')
 
     steps:
       - name: Deploy Stack to Server
-      # Передаем ВСЕ секреты и ВСЕ переменные одной строкой в виде JSON
-      env:
-        ALL_SECRETS: ${{ toJson(secrets) }}
-        ALL_VARS: ${{ toJson(vars) }}
-      run: |
-        SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-        
-        if [ "${{ github.ref_name }}" = "main" ]; then
-          ENVIRONMENT_NAME="production"
-          ENV_SUFFIX="prod"
-        else
-          ENVIRONMENT_NAME="staging"
-          ENV_SUFFIX="test"
-        fi
-        
-        echo "Автоматический деплой проекта ${{ github.event.repository.name }}..."
-        ENV_PROJECT_NAME="${{ github.event.repository.name }}-${ENV_SUFFIX}"
-        ENV_STACK_DIR="/opt/docker-apps/${ENV_PROJECT_NAME}"
-        
-        mkdir -p ${ENV_STACK_DIR}
-        cp docker-compose.yml ${ENV_STACK_DIR}/docker-compose.yml
-        
-        cd ${ENV_STACK_DIR}
-        truncate -s 0 .env
-        
-        # Записываем системные переменные
-        echo "CI_COMMIT_SHORT_SHA=${SHORT_SHA}" >> .env
-        echo "CI_PROJECT_PATH_SLUG=${{ github.repository_owner }}-${{ github.event.repository.name }}" >> .env
-        echo "COMPOSE_PROJECT_NAME=${ENV_PROJECT_NAME}" >> .env
+        # Передаем ВСЕ секреты и ВСЕ переменные одной строкой в виде JSON
+        env:
+          ALL_SECRETS: ${{ toJson(secrets) }}
+          ALL_VARS: ${{ toJson(vars) }}
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
 
-        # --- МАГИЯ АВТО-ПРОБРОСА ПЕРЕМЕННЫХ ИЗ GITHUB ---
-        # 1. Извлекаем обычные Переменные (vars), ищем те, что начинаются на APP_, убираем префикс и пишем в .env
-        if [ ! -z "$ALL_VARS" ]; then
-          echo "$ALL_VARS" | jq -r 'to_entries[] | select(.key | startswith("APP_")) | "\(.key | ltrimstr("APP_"))=\(.value)"' >> .env
-        fi
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            ENVIRONMENT_NAME="production"
+            ENV_SUFFIX="prod"
+          else
+            ENVIRONMENT_NAME="staging"
+            ENV_SUFFIX="test"
+          fi
 
-        # 2. Извлекаем Секреты (secrets), ищем те, что начинаются на APP_, убираем префикс и пишем в .env
-        if [ ! -z "$ALL_SECRETS" ]; then
-          echo "$ALL_SECRETS" | jq -r 'to_entries[] | select(.key | startswith("APP_")) | "\(.key | ltrimstr("APP_"))=\(.value)"' >> .env
-        fi
-        # -----------------------------------------------
+          echo "Автоматический деплой проекта ${{ github.event.repository.name }}..."
+          ENV_PROJECT_NAME="${{ github.event.repository.name }}-${ENV_SUFFIX}"
+          ENV_STACK_DIR="/opt/docker-apps/${ENV_PROJECT_NAME}"
 
-        # ЗАПУСК ВСЕГО СТЕКА
-        docker compose up -d --remove-orphans
-        docker compose ps
+          mkdir -p ${ENV_STACK_DIR}
+          cp docker-compose.yml ${ENV_STACK_DIR}/docker-compose.yml
 
+          cd ${ENV_STACK_DIR}
+          truncate -s 0 .env
+
+          # Записываем системные переменные
+          echo "CI_COMMIT_SHORT_SHA=${SHORT_SHA}" >> .env
+          echo "CI_PROJECT_PATH_SLUG=${{ github.repository_owner }}-${{ github.event.repository.name }}" >> .env
+          echo "COMPOSE_PROJECT_NAME=${ENV_PROJECT_NAME}" >> .env
+
+          # --- МАГИЯ АВТО-ПРОБРОСА ПЕРЕМЕННЫХ ИЗ GITHUB ---
+          # 1. Извлекаем обычные Переменные (vars), ищем те, что начинаются на APP_, убираем префикс и пишем в .env
+          if [ ! -z "$ALL_VARS" ]; then
+            echo "$ALL_VARS" | jq -r 'to_entries[] | select(.key | startswith("APP_")) | "\(.key | ltrimstr("APP_"))=\(.value)"' >> .env
+          fi
+
+          # 2. Извлекаем Секреты (secrets), ищем те, что начинаются на APP_, убираем префикс и пишем в .env
+          if [ ! -z "$ALL_SECRETS" ]; then
+            echo "$ALL_SECRETS" | jq -r 'to_entries[] | select(.key | startswith("APP_")) | "\(.key | ltrimstr("APP_"))=\(.value)"' >> .env
+          fi
+          # -----------------------------------------------
+
+          # ЗАПУСК ВСЕГО СТЕКА
+          docker compose up -d --remove-orphans
+          docker compose ps
 
   # ==================== СТАДИЯ CLEANUP ====================
   cleanup-job:
     runs-on: [self-hosted, testserver]
     needs: deploy-job
     if: always() && needs.deploy-job.result == 'success'
-    
+
     steps:
       - name: Cleanup old Docker images
         run: |
           echo "Удаление старых локальных образов ${{ env.IMAGE_NAME }}, оставляем только последние ${{ env.KEEP_IMAGES }}"
-          
+
           docker images ${{ env.IMAGE_NAME }} --format "{{.ID}} {{.CreatedAt}}" | \
             sort -r -k2 | \
             tail -n +$((${{ env.KEEP_IMAGES }} + 1)) | \
             awk '{print $1}' | \
             xargs -r docker rmi -f 2>/dev/null || true
-            
+
           echo "Запуск глобальной очистки неиспользуемых слоев"
           docker image prune -f
