@@ -1,5 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
+from app.routes import auth
 import time
 
 app = FastAPI(
@@ -19,6 +20,13 @@ app.add_middleware(
 
 # Время запуска приложения для подсчета uptime
 START_TIME = time.time()
+
+
+
+api_router = APIRouter()
+api_router.include_router(auth.router)
+
+
 
 @app.get("/health", tags=["System"])
 def health_check():
