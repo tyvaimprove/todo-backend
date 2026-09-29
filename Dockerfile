@@ -1,18 +1,18 @@
 # --- Этап 1: Сборка зависимостей ---
-FROM python:3.12-slim AS builder
+FROM ghcr.io/astral-sh/uv:python3.12-slim AS builder
 
 WORKDIR /app
 
-# Устанавливаем системные утилиты, необходимые для компиляции некоторых пакетов
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# Включаем компиляцию байткода и режим линковки для максимальной оптимизации
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
 
-# Копируем файл зависимостей
-COPY requirements.txt .
+# Копируем только файлы конфигурации зависимостей (кэширование слоев Docker)
+COPY pyproject.toml uv.lock ./
 
-# Собираем wheels (бинарные пакеты) в изолированную папку
-RUN pip install --no-cache-dir --user -r requirements.txt
+# Устанавливаем зависимости в изолированную папку проекта (без самого приложения)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --no-dev
 
 
 # --- Этап 2: Финальный минимальный образ ---
@@ -20,20 +20,18 @@ FROM python:3.12-slim AS runner
 
 WORKDIR /app
 
-# Копируем установленные библиотеки из предыдущего этапа (builder)
-COPY --from=builder /root/.local /root/.local
-COPY --from=builder /app /app
+# Копируем виртуальное окружение со всеми зависимостями из этапа builder
+COPY --from=builder /app/.venv /app/.venv
 
 # Копируем исходный код приложения
 COPY . .
 
-# Добавляем путь к локальным бинарникам Python в PATH
-ENV PATH=/root/.local/bin:$PATH
-# Отключаем буферизацию логов Python
+# Добавляем путь к виртуальному окружению в PATH
+ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
 # Открываем порт, на котором работает FastAPI по умолчанию в нашем коде
 EXPOSE 8000
 
-# Команда запуска приложения через Uvicorn
+# Команда запуска приложения через виртуальное окружение
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
