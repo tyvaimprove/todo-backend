@@ -46,11 +46,11 @@ jobs:
           if [ "${{ github.ref_name }}" = "main" ]; then
             ENVIRONMENT_NAME="production"
             ENV_SUFFIX="prod"
-            TARGET_PORT="8000"
+            export APP_PORT="8000"
           else
             ENVIRONMENT_NAME="staging"
             ENV_SUFFIX="test"
-            TARGET_PORT="8001"
+            export APP_PORT="8001"
           fi
 
           echo "Автоматический деплой проекта ${{ github.event.repository.name }}..."
