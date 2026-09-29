@@ -36,9 +36,7 @@ jobs:
     needs: build-job
     # Условие: деплой пойдет, если сборка успешна ИЛИ если мы пушим в main 
     # (так как для main шаг сборки выше пропустится по условию)
-    if: |
-      always() && 
-      (needs.build-job.result == 'success' || github.ref_name == 'main')
+    if: always() && (needs.build-job.result == 'success' || github.ref_name == 'main')
 
     steps:
       - name: Deploy Stack to Server
